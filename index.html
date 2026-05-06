@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>NYC Pedestrian Network Explorer</title>
+<title>NYC Pedestrian Volume Map</title>
 <script src="https://unpkg.com/deck.gl@8.9.35/dist.min.js"></script>
 <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
 <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
@@ -145,7 +145,7 @@ body {
 <body>
 
 <div id="loading">
-  <h2>NYC Pedestrian Network</h2>
+  <h2>NYC Pedestrian Volume Map</h2>
   <div class="load-bar-wrap"><div class="load-bar"></div></div>
   <p id="load-msg">Loading data...</p>
 </div>
@@ -162,7 +162,7 @@ body {
 
 <div id="panel">
   <div id="panel-header">
-    <h1>NYC Pedestrian Network</h1>
+    <h1>NYC Pedestrian Volume Map</h1>
     <p>MIT City Form Lab · 2018–2019</p>
   </div>
   <div id="panel-scroll">
@@ -190,7 +190,7 @@ body {
         <div class="row-label">Time period</div>
         <div class="seg-control">
           <button class="seg-btn active" id="tbtn-AM" onclick="setTime('AM')">8–9 AM</button>
-          <button class="seg-btn"        id="tbtn-MD" onclick="setTime('MD')">12:30 PM</button>
+          <button class="seg-btn"        id="tbtn-MD" onclick="setTime('MD')">12:30-1:30 PM</button>
           <button class="seg-btn"        id="tbtn-PM" onclick="setTime('PM')">5–6 PM</button>
         </div>
         <button class="icon-btn" id="anim-btn" onclick="toggleAnimate()">
@@ -227,6 +227,7 @@ body {
 
     <div class="block" id="legend-block">
       <div class="block-header">Color Scale</div>
+      <div class="block-body">Pedestrian Volume</div>
       <div class="block-body">
         <div class="legend-ramp" style="background:linear-gradient(90deg,#0d1b3e,#0044aa,#25c6e8,#7fff83,#ffdd00,#ff6600,#cc0022)"></div>
         <div class="legend-ticks"><span>Low</span><span id="legend-mid">–</span><span id="legend-high">High</span></div>
@@ -238,7 +239,7 @@ body {
         <div class="block-header">Dataset</div>
         <div class="block-body" style="font-size:11px;line-height:1.6;color:#c8cdd6;font-family:'IBM Plex Mono',monospace">
       
-          <b>NYC Pedestrian Network</b><br/><br/>
+          <b>NYC Pedestrian Volume Map</b><br/><br/>
       
           <b>Prepared by:</b> MIT City Form Lab<br/>
           Based on NYC LION sidewalk layer [57]<br/><br/>
