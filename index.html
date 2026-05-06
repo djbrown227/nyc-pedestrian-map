@@ -234,29 +234,6 @@ body {
       </div>
     </div>
 
-    <div class="block">
-      <div class="block-header">Borough</div>
-      <div class="block-body">
-        <div class="chip-row">
-          <button class="chip active" id="bor-all"       onclick="toggleBorough('all')">All NYC</button>
-          <button class="chip"        id="bor-manhattan"  onclick="toggleBorough('manhattan')">Manhattan</button>
-          <button class="chip"        id="bor-brooklyn"   onclick="toggleBorough('brooklyn')">Brooklyn</button>
-          <button class="chip"        id="bor-queens"     onclick="toggleBorough('queens')">Queens</button>
-          <button class="chip"        id="bor-bronx"      onclick="toggleBorough('bronx')">Bronx</button>
-          <button class="chip"        id="bor-staten"     onclick="toggleBorough('staten')">Staten Is.</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="block">
-      <div class="block-header">Export</div>
-      <div class="block-body">
-        <button class="icon-btn" style="margin-top:0" onclick="exportVisible()">
-          <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor"><path d="M5.5 7.5L2 4h2V1h3v3h2L5.5 7.5zM1 9h9v1H1z"/></svg>
-          Export visible segments as CSV
-        </button>
-      </div>
-    </div>
 
     <div class="block">
       <div class="block-body" style="padding-top:14px">
@@ -309,7 +286,7 @@ const JOURNEY_P95 = {
 let allData = [], filteredData = [];
 let overlay = null, mapInstance = null;
 let mode = 'volume', dayType = 'wkdy', timePeriod = 'AM';
-let journeyField = 'HME_JOB', activeBorough = 'all';
+let journeyField = 'HME_JOB';
 let animating = false, animTimer = null, animIdx = 0;
 
 const ANIM_SEQ = [
@@ -485,38 +462,6 @@ function toggleAnimate() {
     btn.classList.remove('playing');
     clearInterval(animTimer);
   }
-}
-function toggleBorough(b) {
-  activeBorough=b;
-  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-  document.getElementById(`bor-${b}`).classList.add('active');
-  if (b==='all') {
-    filteredData=allData;
-    mapInstance.flyTo({center:[-73.97,40.70],zoom:11,duration:600});
-  } else {
-    const bb=BOROUGH_BOUNDS[b];
-    filteredData=allData.filter(s=>{ const [lon,lat]=s.path[0]||[0,0]; return lon>=bb[0]&&lat>=bb[1]&&lon<=bb[2]&&lat<=bb[3]; });
-    mapInstance.fitBounds(
-  [
-    [bb[0], bb[1]], // southwest
-    [bb[2], bb[3]]  // northeast
-  ],
-  {
-    padding: { top: 60, bottom: 60, left: 320, right: 60 }, // key tweak
-    duration: 600
-  }
-);
-  }
-  render();
-}
-function exportVisible() {
-  const field=mode==='volume'?`pred${dayType}${timePeriod}`:mode==='journey'?journeyField:'avg_pred_all';
-  const rows=[['id','lon','lat','predwkdyAM','predwkdyMD','predwkdyPM','predwkndAM','predwkndMD','predwkndPM','avg_pred_wkdy','avg_pred_wknd','avg_pred_all',field].join(',')];
-  filteredData.forEach(s=>{ const [lon,lat]=s.path[0]||[0,0]; rows.push([s.id,lon.toFixed(6),lat.toFixed(6),s.predwkdyAM,s.predwkdyMD,s.predwkdyPM,s.predwkndAM,s.predwkndMD,s.predwkndPM,s.avg_pred_wkdy,s.avg_pred_wknd,s.avg_pred_all,s[field]].join(',')); });
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([rows.join('\n')],{type:'text/csv'}));
-  a.download=`nyc_ped_${activeBorough}_${field}.csv`;
-  a.click();
 }
 
 async function boot() {
