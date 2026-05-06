@@ -293,7 +293,11 @@ body {
 </div>
 
 <script>
-const DATA_FILE = 'pedestrian_deckgl_v2.json';
+    const DATA_FILES = [
+    'pedestrian_chunk_00.json',
+    'pedestrian_chunk_01.json',
+    'pedestrian_chunk_02.json'
+  ];
 
 const VOL_P95 = 421;
 const JOURNEY_P95 = {
@@ -516,25 +520,51 @@ function exportVisible() {
 }
 
 async function boot() {
-  try {
-    document.getElementById('load-msg').textContent=`Loading ${DATA_FILE}...`;
-    const res=await fetch(DATA_FILE);
-    if (!res.ok) throw new Error(`HTTP ${res.status} — is the file next to index.html?`);
-    document.getElementById('load-msg').textContent='Parsing data...';
-    const raw=await res.json();
-    document.getElementById('load-msg').textContent=`Processing ${raw.length.toLocaleString()} segments...`;
-    raw.forEach(s=>{
-      if (s.avg_pred_wkdy===undefined) s.avg_pred_wkdy=+((((s.predwkdyAM||0)+(s.predwkdyMD||0)+(s.predwkdyPM||0))/3).toFixed(1));
-      if (s.avg_pred_wknd===undefined) s.avg_pred_wknd=+((((s.predwkndAM||0)+(s.predwkndMD||0)+(s.predwkndPM||0))/3).toFixed(1));
-      if (s.avg_pred_all===undefined)  s.avg_pred_all=+(((s.avg_pred_wkdy+s.avg_pred_wknd)/2).toFixed(1));
-    });
-    allData=raw; filteredData=raw;
-    initMap();
-  } catch(err) {
-    document.getElementById('load-msg').textContent=`Error: ${err.message}`;
-    console.error(err);
+    try {
+      document.getElementById('load-msg').textContent =
+        `Loading ${DATA_FILES.length} chunks...`;
+  
+      // Load all chunks in parallel
+      const responses = await Promise.all(
+        DATA_FILES.map(async (file) => {
+          const res = await fetch(file);
+          if (!res.ok) throw new Error(`Failed to load ${file} (${res.status})`);
+          return res.json();
+        })
+      );
+  
+      document.getElementById('load-msg').textContent =
+        'Merging chunks...';
+  
+      // Flatten into one array
+      const raw = responses.flat();
+  
+      document.getElementById('load-msg').textContent =
+        `Processing ${raw.length.toLocaleString()} segments...`;
+  
+      // Ensure derived fields exist (same logic as before)
+      raw.forEach(s => {
+        if (s.avg_pred_wkdy === undefined)
+          s.avg_pred_wkdy = +(((s.predwkdyAM + s.predwkdyMD + s.predwkdyPM) / 3).toFixed(1));
+  
+        if (s.avg_pred_wknd === undefined)
+          s.avg_pred_wknd = +(((s.predwkndAM + s.predwkndMD + s.predwkndPM) / 3).toFixed(1));
+  
+        if (s.avg_pred_all === undefined)
+          s.avg_pred_all = +(((s.avg_pred_wkdy + s.avg_pred_wknd) / 2).toFixed(1));
+      });
+  
+      allData = raw;
+      filteredData = raw;
+  
+      initMap();
+  
+    } catch (err) {
+      document.getElementById('load-msg').textContent =
+        `Error: ${err.message}`;
+      console.error(err);
+    }
   }
-}
 
 function initMap() {
   // MapLibre GL — free, no token required
