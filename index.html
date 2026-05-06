@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NYC Pedestrian Network Explorer</title>
+<script src="https://unpkg.com/deck.gl@8.9.35/dist.min.js"></script>
+<script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+<link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: #1f2129;
+  color: #c8cdd6;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 12px;
+  overflow: hidden;
+  height: 100vh; width: 100vw;
+}
+#map { position: absolute; inset: 0; }
+
+/* ── PANEL ── */
+#panel {
+  position: absolute; top: 0; left: 0; bottom: 0;
+  width: 272px; background: #22252e;
+  z-index: 100; display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 2px 0 12px rgba(0,0,0,0.4);
+}
+#panel-header {
+  padding: 16px 18px 14px;
+  background: #16181f;
+  border-bottom: 1px solid #2e3340;
+  flex-shrink: 0;
+}
+#panel-header h1 { font-size: 13px; font-weight: 600; color: #f0f2f5; letter-spacing: 0.01em; line-height: 1.3; }
+#panel-header p  { font-size: 11px; color: #6b7280; margin-top: 3px; font-family: 'IBM Plex Mono', monospace; }
+
+#panel-scroll { flex: 1; overflow-y: auto; }
+#panel-scroll::-webkit-scrollbar { width: 4px; }
+#panel-scroll::-webkit-scrollbar-thumb { background: #3a4050; border-radius: 2px; }
+
+.block { border-bottom: 1px solid #2e3340; }
+.block-header { padding: 12px 18px 10px; color: #f0f2f5; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.block-body { padding: 0 18px 16px; }
+.row-label { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.1em; margin: 12px 0 7px; }
+.layer-dot { width: 10px; height: 10px; border-radius: 50%; background: linear-gradient(135deg,#25c6e8,#1c6df7); display: inline-block; flex-shrink: 0; }
+
+.seg-control { display: flex; background: #16181f; border-radius: 4px; padding: 2px; gap: 2px; }
+.seg-btn {
+  flex: 1; padding: 6px 4px;
+  font-family: 'IBM Plex Sans', sans-serif; font-size: 11px; font-weight: 500;
+  border: none; background: transparent; color: #6b7280;
+  cursor: pointer; border-radius: 3px; transition: all 0.12s; text-align: center; white-space: nowrap;
+}
+.seg-btn:hover { color: #c8cdd6; background: #2a2e3a; }
+.seg-btn.active { background: #3a4050; color: #f0f2f5; }
+
+.option-row { display: flex; align-items: center; padding: 7px 0; cursor: pointer; gap: 10px; }
+.option-row:hover .option-label { color: #f0f2f5; }
+.option-radio { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #4a5060; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.option-radio.checked { border-color: #25c6e8; }
+.option-radio.checked::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #25c6e8; }
+.option-label { color: #c8cdd6; font-size: 12px; flex: 1; }
+
+.chip-row { display: flex; flex-wrap: wrap; gap: 5px; }
+.chip { padding: 5px 11px; font-size: 11px; font-weight: 500; border-radius: 13px; border: 1px solid #3a4050; background: transparent; color: #6b7280; cursor: pointer; transition: all 0.12s; }
+.chip:hover { border-color: #c8cdd6; color: #c8cdd6; }
+.chip.active { background: #3a4050; border-color: #6b7280; color: #f0f2f5; }
+
+.legend-ramp { height: 6px; border-radius: 3px; margin: 8px 0 5px; }
+.legend-ticks { display: flex; justify-content: space-between; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #6b7280; }
+
+.icon-btn {
+  width: 100%; padding: 8px 12px;
+  font-family: 'IBM Plex Sans', sans-serif; font-size: 11px; font-weight: 500;
+  border: 1px solid #3a4050; background: transparent; color: #c8cdd6;
+  cursor: pointer; border-radius: 4px; transition: all 0.12s;
+  text-align: left; display: flex; align-items: center; gap: 7px; margin-top: 10px;
+}
+.icon-btn:hover { background: #2a2e3a; color: #f0f2f5; border-color: #5a6272; }
+.icon-btn.playing { border-color: #25c6e8; color: #25c6e8; background: rgba(37,198,232,0.08); }
+
+/* ── TOP BAR ── */
+#topbar {
+  position: absolute; top: 0; left: 272px; right: 0; height: 40px;
+  background: rgba(22,24,31,0.92); backdrop-filter: blur(8px);
+  border-bottom: 1px solid #2e3340; z-index: 99;
+  display: flex; align-items: center; padding: 0 18px; gap: 18px;
+}
+.topbar-stat { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #6b7280; }
+.topbar-stat span { color: #c8cdd6; }
+.topbar-sep { width: 1px; height: 16px; background: #2e3340; }
+
+/* ── TOOLTIP — fixed upper right, larger ── */
+#tooltip {
+  position: fixed;
+  top: 56px;
+  right: 18px;
+  z-index: 200;
+  pointer-events: none;
+  background: #22252e;
+  border: 1px solid #3a4050;
+  border-radius: 6px;
+  min-height: 520px;
+  padding: 22px 24px;
+  width: 340px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+  display: block;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.tt-title { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; }
+.tt-value { font-size: 48px; font-weight: 500; color: #f0f2f5; line-height: 1; }
+.tt-value-sub { font-size: 12px; color: #6b7280; margin-top: 6px; margin-bottom: 0; letter-spacing: 0.03em; }
+.tt-divider { height: 1px; background: #2e3340; margin: 26px 0; }
+.tt-spark-label { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 10px; }
+
+/* spark bars — taller, more room */
+.spark-bars { display: flex; gap: 5px; align-items: flex-end; height: 80px; margin-top: 150px;}
+.spark-col { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; }
+.spark-bar { width: 100%; border-radius: 2px 2px 0 0; min-height: 3px; }
+.spark-val { font-size: 9px; color: #a0a7b4; }
+.spark-tick { font-size: 9px; color: #6b7280; }
+
+.tt-divider-sm { height: 1px; background: #2e3340; margin: 24px 0; }
+.tt-row { display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; }
+.tt-row-label { color: #6b7280; }
+.tt-row-val   { color: #c8cdd6; font-weight: 500; }
+.tt-diff { margin-top: 14px; padding: 9px 12px; border-radius: 3px; font-size: 11px; line-height: 1.5; }
+.tt-diff.wkdy { background: rgba(37,198,232,0.1); color: #25c6e8; }
+.tt-diff.wknd { background: rgba(239,93,145,0.1); color: #ef5d91; }
+
+/* ── LOADING ── */
+#loading {
+  position: absolute; inset: 0; background: #1f2129; z-index: 999;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+}
+#loading h2 { font-size: 13px; font-weight: 500; color: #f0f2f5; font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.08em; }
+#loading p  { font-size: 11px; color: #6b7280; font-family: 'IBM Plex Mono', monospace; }
+.load-bar-wrap { width: 200px; height: 2px; background: #3a4050; border-radius: 1px; overflow: hidden; }
+.load-bar { height: 100%; background: #25c6e8; border-radius: 1px; animation: loadpulse 1.2s ease-in-out infinite; }
+@keyframes loadpulse { 0%{width:0%;margin-left:0} 50%{width:60%;margin-left:20%} 100%{width:0%;margin-left:100%} }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <h2>NYC Pedestrian Network</h2>
+  <div class="load-bar-wrap"><div class="load-bar"></div></div>
+  <p id="load-msg">Loading data...</p>
+</div>
+
+<div id="map"></div>
+
+<div id="topbar">
+  <div class="topbar-stat">Segments <span id="count-num">–</span></div>
+  <div class="topbar-sep"></div>
+  <div class="topbar-stat">Mode <span id="mode-label">–</span></div>
+  <div class="topbar-sep"></div>
+  <div class="topbar-stat">Period <span id="period-label">–</span></div>
+</div>
+
+<div id="panel">
+  <div id="panel-header">
+    <h1>NYC Pedestrian Network</h1>
+    <p>MIT City Form Lab · 2018–2019</p>
+  </div>
+  <div id="panel-scroll">
+
+    <div class="block">
+      <div class="block-header"><span class="layer-dot"></span>Pedestrian Segments</div>
+      <div class="block-body">
+        <div class="row-label">Color by</div>
+        <div class="seg-control">
+          <button class="seg-btn active" id="tab-volume"  onclick="setMode('volume')">Volume</button>
+          <button class="seg-btn"        id="tab-journey" onclick="setMode('journey')">Journey</button>
+          <button class="seg-btn"        id="tab-diff"    onclick="setMode('diff')">Wkdy / Wknd</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="block" id="time-block">
+      <div class="block-header">Time of Day</div>
+      <div class="block-body">
+        <div class="row-label">Day type</div>
+        <div class="seg-control">
+          <button class="seg-btn active" id="btn-wkdy" onclick="setDayType('wkdy')">Weekday</button>
+          <button class="seg-btn"        id="btn-wknd" onclick="setDayType('wknd')">Weekend</button>
+        </div>
+        <div class="row-label">Time period</div>
+        <div class="seg-control">
+          <button class="seg-btn active" id="tbtn-AM" onclick="setTime('AM')">8–9 AM</button>
+          <button class="seg-btn"        id="tbtn-MD" onclick="setTime('MD')">12:30 PM</button>
+          <button class="seg-btn"        id="tbtn-PM" onclick="setTime('PM')">5–6 PM</button>
+        </div>
+        <button class="icon-btn" id="anim-btn" onclick="toggleAnimate()">
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg>
+          Animate all periods
+        </button>
+      </div>
+    </div>
+
+    <div class="block" id="journey-block" style="display:none">
+      <div class="block-header">Journey Type</div>
+      <div class="block-body">
+        <div class="option-row" onclick="setJourney('HME_JOB')"><div class="option-radio checked" id="jr-HME_JOB"></div><span class="option-label">Home to Work</span></div>
+        <div class="option-row" onclick="setJourney('HME_MTA')"><div class="option-radio" id="jr-HME_MTA"></div><span class="option-label">Home to Subway</span></div>
+        <div class="option-row" onclick="setJourney('HME_SCH')"><div class="option-radio" id="jr-HME_SCH"></div><span class="option-label">Home to School</span></div>
+        <div class="option-row" onclick="setJourney('HME_PRK')"><div class="option-radio" id="jr-HME_PRK"></div><span class="option-label">Home to Park</span></div>
+        <div class="option-row" onclick="setJourney('HME_AMN')"><div class="option-radio" id="jr-HME_AMN"></div><span class="option-label">Home to Amenity</span></div>
+        <div class="option-row" onclick="setJourney('JOB_MTA')"><div class="option-radio" id="jr-JOB_MTA"></div><span class="option-label">Work to Subway</span></div>
+        <div class="option-row" onclick="setJourney('JOB_AMN')"><div class="option-radio" id="jr-JOB_AMN"></div><span class="option-label">Work to Amenity</span></div>
+        <div class="option-row" onclick="setJourney('AMN_MTA')"><div class="option-radio" id="jr-AMN_MTA"></div><span class="option-label">Amenity to Subway</span></div>
+        <div class="option-row" onclick="setJourney('AMN_AMN')"><div class="option-radio" id="jr-AMN_AMN"></div><span class="option-label">Amenity to Amenity</span></div>
+        <p style="font-size:10px;color:#6b7280;margin-top:10px;line-height:1.6;font-family:'IBM Plex Mono',monospace">Uncalibrated. Spatial variation is meaningful; absolute values are not.</p>
+      </div>
+    </div>
+
+    <div class="block" id="diff-block" style="display:none">
+      <div class="block-header">Weekday vs Weekend</div>
+      <div class="block-body">
+        <p style="font-size:11px;color:#c8cdd6;line-height:1.6">Average predicted volume (AM + MD + PM). Color and width show direction and magnitude of difference.</p>
+        <div class="legend-ramp" style="background:linear-gradient(90deg,#25c6e8,#22252e,#ef5d91);margin-top:12px"></div>
+        <div class="legend-ticks"><span style="color:#25c6e8">Weekday higher</span><span style="color:#ef5d91">Weekend higher</span></div>
+      </div>
+    </div>
+
+    <div class="block" id="legend-block">
+      <div class="block-header">Color Scale</div>
+      <div class="block-body">
+        <div class="legend-ramp" style="background:linear-gradient(90deg,#0d1b3e,#0044aa,#25c6e8,#7fff83,#ffdd00,#ff6600,#cc0022)"></div>
+        <div class="legend-ticks"><span>Low</span><span id="legend-mid">–</span><span id="legend-high">High</span></div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6b7280;margin-top:8px;line-height:1.7" id="legend-pcts"></div>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="block-header">Borough</div>
+      <div class="block-body">
+        <div class="chip-row">
+          <button class="chip active" id="bor-all"       onclick="toggleBorough('all')">All NYC</button>
+          <button class="chip"        id="bor-manhattan"  onclick="toggleBorough('manhattan')">Manhattan</button>
+          <button class="chip"        id="bor-brooklyn"   onclick="toggleBorough('brooklyn')">Brooklyn</button>
+          <button class="chip"        id="bor-queens"     onclick="toggleBorough('queens')">Queens</button>
+          <button class="chip"        id="bor-bronx"      onclick="toggleBorough('bronx')">Bronx</button>
+          <button class="chip"        id="bor-staten"     onclick="toggleBorough('staten')">Staten Is.</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="block-header">Export</div>
+      <div class="block-body">
+        <button class="icon-btn" style="margin-top:0" onclick="exportVisible()">
+          <svg width="11" height="11" viewBox="0 0 11 11" fill="currentColor"><path d="M5.5 7.5L2 4h2V1h3v3h2L5.5 7.5zM1 9h9v1H1z"/></svg>
+          Export visible segments as CSV
+        </button>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="block-body" style="padding-top:14px">
+        <p style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#6b7280;line-height:1.8">
+          Sevtsuk et al. (2025) Nature Cities<br/>
+          MIT City Form Lab · LION Sidewalk Network<br/>
+          2018–2019 observed pedestrian counts
+        </p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- TOOLTIP — fixed upper right -->
+<div id="tooltip">
+  <div class="tt-title" id="tt-title">Hover a segment</div>
+  <div class="tt-value" id="tt-value">–</div>
+  <div class="tt-value-sub" id="tt-value-sub">&nbsp;</div>
+  <div class="tt-divider"></div>
+  <div class="tt-spark-label">Predicted pedestrians by period</div>
+  <div class="spark-bars" id="spark-bars">
+    <div class="spark-col"><div class="spark-bar" style="height:3px;background:#3a4050"></div><div class="spark-tick">WD AM</div></div>
+    <div class="spark-col"><div class="spark-bar" style="height:3px;background:#3a4050"></div><div class="spark-tick">WD MD</div></div>
+    <div class="spark-col"><div class="spark-bar" style="height:3px;background:#3a4050"></div><div class="spark-tick">WD PM</div></div>
+    <div class="spark-col"><div class="spark-bar" style="height:3px;background:#3a4050"></div><div class="spark-tick">WE AM</div></div>
+    <div class="spark-col"><div class="spark-bar" style="height:3px;background:#3a4050"></div><div class="spark-tick">WE MD</div></div>
+    <div class="spark-col"><div class="spark-bar" style="height:3px;background:#3a4050"></div><div class="spark-tick">WE PM</div></div>
+  </div>
+  <div class="tt-divider-sm"></div>
+  <div class="tt-row"><span class="tt-row-label">Avg weekday</span><span class="tt-row-val" id="tt-avg-wkdy">–</span></div>
+  <div class="tt-row"><span class="tt-row-label">Avg weekend</span><span class="tt-row-val" id="tt-avg-wknd">–</span></div>
+  <div class="tt-diff" id="tt-diff" style="display:none"></div>
+</div>
+
+<script>
+const DATA_FILE = 'pedestrian_deckgl_v2.json';
+
+const VOL_P95 = 421;
+const JOURNEY_P95 = {
+  HME_SCH:  927.2, HME_MTA:  893.1, HME_PRK: 1079.7,
+  HME_JOB: 1143.9, HME_AMN: 1159.7, JOB_MTA:  335.2,
+  JOB_AMN:  526.3, AMN_MTA:   12.7, AMN_AMN:   16.9,
+};
+
+let allData = [], filteredData = [];
+let overlay = null, mapInstance = null;
+let mode = 'volume', dayType = 'wkdy', timePeriod = 'AM';
+let journeyField = 'HME_JOB', activeBorough = 'all';
+let animating = false, animTimer = null, animIdx = 0;
+
+const ANIM_SEQ = [
+  {dayType:'wkdy',timePeriod:'AM'},{dayType:'wkdy',timePeriod:'MD'},{dayType:'wkdy',timePeriod:'PM'},
+  {dayType:'wknd',timePeriod:'AM'},{dayType:'wknd',timePeriod:'MD'},{dayType:'wknd',timePeriod:'PM'},
+];
+const BOROUGH_BOUNDS = {
+  manhattan: [-74.02,40.698,-73.907,40.882], brooklyn: [-74.042,40.57,-73.833,40.739],
+  queens:    [-73.962,40.541,-73.700,40.800], bronx:   [-73.933,40.785,-73.748,40.917],
+  staten:    [-74.259,40.477,-74.034,40.651],
+};
+
+function rampColor(t) {
+  const stops = [[13,27,62],[0,68,170],[37,198,232],[127,255,131],[255,221,0],[255,102,0],[204,0,34]];
+  t = Math.max(0,Math.min(1,t));
+  const i=t*(stops.length-1), lo=Math.floor(i), hi=Math.min(stops.length-1,lo+1), f=i-lo;
+  return stops[lo].map((c,x) => Math.round(c+f*(stops[hi][x]-c)));
+}
+function diffColor(wkdy,wknd) {
+  const t=Math.max(-1,Math.min(1,(wkdy-wknd)/420.7));
+  if (t>=0) return [Math.round(37*t+34*(1-t)),Math.round(198*t+37*(1-t)),Math.round(232*t+46*(1-t))];
+  const s=-t;
+  return [Math.round(239*s+34*(1-s)),Math.round(93*s+37*(1-s)),Math.round(145*s+46*(1-s))];
+}
+function normVol(v)       { return Math.min(1,(v||0)/VOL_P95); }
+function normJourney(v,f) { return Math.min(1,(v||0)/(JOURNEY_P95[f]||1)); }
+
+function getColor(seg) {
+  if (mode==='diff')    return [...diffColor(seg.avg_pred_wkdy||0,seg.avg_pred_wknd||0),220];
+  if (mode==='journey') return [...rampColor(normJourney(seg[journeyField],journeyField)),210];
+  return [...rampColor(normVol(seg[`pred${dayType}${timePeriod}`])),210];
+}
+function getWidth(seg) {
+  if (mode==='diff')    return 1+Math.min(1,Math.abs((seg.avg_pred_wkdy||0)-(seg.avg_pred_wknd||0))/420.7)*7;
+  if (mode==='journey') return 1+normJourney(seg[journeyField],journeyField)*7;
+  return 1+normVol(seg[`pred${dayType}${timePeriod}`])*7;
+}
+
+function render() {
+  if (!overlay) return;
+  overlay.setProps({
+    layers: [new deck.PathLayer({
+      id: 'paths',
+      data: filteredData,
+      getPath:  d => d.path,
+      getColor,
+      getWidth,
+      widthUnits: 'meters',
+      widthMinPixels: 0.5,
+      widthMaxPixels: 16,
+      pickable: true,
+      autoHighlight: true,
+      highlightColor: [255,255,255,60],
+      updateTriggers: {
+        getColor: [mode,dayType,timePeriod,journeyField],
+        getWidth: [mode,dayType,timePeriod,journeyField],
+      },
+      onHover: ({object}) => showTooltip(object),
+    })]
+  });
+  document.getElementById('count-num').textContent    = filteredData.length.toLocaleString();
+  document.getElementById('mode-label').textContent   = mode==='volume'?'Volume':mode==='journey'?'Journey':'Wkdy / Wknd diff';
+  document.getElementById('period-label').textContent = mode==='volume'?`${dayType==='wkdy'?'Weekday':'Weekend'} ${timePeriod}`:'—';
+  updateLegend();
+}
+
+function updateLegend() {
+  if (mode==='journey') {
+    const p95v=JOURNEY_P95[journeyField]||1;
+    document.getElementById('legend-mid').textContent  = Math.round(p95v*0.5).toLocaleString();
+    document.getElementById('legend-high').textContent = `p95: ${Math.round(p95v).toLocaleString()}`;
+    document.getElementById('legend-pcts').innerHTML   = `p95 = ${Math.round(p95v).toLocaleString()} (top of scale)`;
+  } else {
+    document.getElementById('legend-mid').textContent  = Math.round(VOL_P95/2).toLocaleString();
+    document.getElementById('legend-high').textContent = `p95: ${VOL_P95.toLocaleString()}`;
+    document.getElementById('legend-pcts').innerHTML   = `p50 ≈ 131 &nbsp; p75 ≈ 164 &nbsp; p95 ≈ 421`;
+  }
+}
+
+function idleBars() {
+  return ['WD AM','WD MD','WD PM','WE AM','WE MD','WE PM'].map(l =>
+    `<div class="spark-col"><div class="spark-bar" style="height:3px;background:#3a4050"></div><div class="spark-tick">${l}</div></div>`
+  ).join('');
+}
+
+function showTooltip(seg) {
+  if (!seg) {
+    document.getElementById('tt-title').textContent     = 'Hover a segment';
+    document.getElementById('tt-value').textContent     = '–';
+    document.getElementById('tt-value-sub').innerHTML   = '&nbsp;';
+    document.getElementById('tt-avg-wkdy').textContent  = '–';
+    document.getElementById('tt-avg-wknd').textContent  = '–';
+    document.getElementById('tt-diff').style.display    = 'none';
+    document.getElementById('spark-bars').innerHTML     = idleBars();
+    return;
+  }
+
+  const periods = [
+    {key:'predwkdyAM',label:'WD AM',color:'#25c6e8'},
+    {key:'predwkdyMD',label:'WD MD',color:'#1fa8c8'},
+    {key:'predwkdyPM',label:'WD PM',color:'#1780a0'},
+    {key:'predwkndAM',label:'WE AM',color:'#ef5d91'},
+    {key:'predwkndMD',label:'WE MD',color:'#c04878'},
+    {key:'predwkndPM',label:'WE PM',color:'#90305c'},
+  ];
+  const vals   = periods.map(p => seg[p.key]||0);
+  const maxVal = Math.max(...vals,1);
+
+  let val, sub;
+  if      (mode==='volume')  { val=seg[`pred${dayType}${timePeriod}`]||0; sub=`Est. peds · ${dayType==='wkdy'?'Weekday':'Weekend'} ${timePeriod}`; }
+  else if (mode==='journey') { val=seg[journeyField]||0; sub=`Flow · ${journeyField}`; }
+  else                       { val=seg.avg_pred_all||0; sub='Avg predicted (all periods)'; }
+
+  document.getElementById('tt-title').textContent    = `Segment ${seg.id}`;
+  document.getElementById('tt-value').textContent    = Math.round(val).toLocaleString();
+  document.getElementById('tt-value-sub').textContent= sub;
+  document.getElementById('tt-avg-wkdy').textContent = Math.round(seg.avg_pred_wkdy||0).toLocaleString();
+  document.getElementById('tt-avg-wknd').textContent = Math.round(seg.avg_pred_wknd||0).toLocaleString();
+
+  document.getElementById('spark-bars').innerHTML = periods.map((p,i) => {
+    const h   = Math.max(3,Math.round((vals[i]/maxVal)*140));
+    const vStr = vals[i] >= 1000 ? `${(vals[i]/1000).toFixed(1)}k` : Math.round(vals[i]).toString();
+    return `<div class="spark-col">
+      <div class="spark-val">${vStr}</div>
+      <div class="spark-bar" style="height:${h}px;background:${p.color}"></div>
+      <div class="spark-tick">${p.label}</div>
+    </div>`;
+  }).join('');
+
+  const diffEl=document.getElementById('tt-diff');
+  const wd=seg.avg_pred_wkdy||0, we=seg.avg_pred_wknd||0;
+  if      (wd>we&&we>0) { diffEl.className='tt-diff wkdy'; diffEl.textContent=`Weekday is ${Math.round(((wd-we)/we)*100)}% busier than weekend`; diffEl.style.display='block'; }
+  else if (we>wd&&wd>0) { diffEl.className='tt-diff wknd'; diffEl.textContent=`Weekend is ${Math.round(((we-wd)/wd)*100)}% busier than weekday`; diffEl.style.display='block'; }
+  else                  { diffEl.style.display='none'; }
+}
+
+function setMode(m) {
+  mode=m;
+  ['volume','journey','diff'].forEach(t => document.getElementById(`tab-${t}`).classList.toggle('active',t===m));
+  document.getElementById('time-block').style.display    = m==='volume'  ?'':'none';
+  document.getElementById('journey-block').style.display = m==='journey' ?'':'none';
+  document.getElementById('diff-block').style.display    = m==='diff'    ?'':'none';
+  document.getElementById('legend-block').style.display  = m==='diff'    ?'none':'';
+  if (animating&&m!=='volume') toggleAnimate();
+  render();
+}
+function setDayType(d) {
+  dayType=d;
+  document.getElementById('btn-wkdy').classList.toggle('active',d==='wkdy');
+  document.getElementById('btn-wknd').classList.toggle('active',d==='wknd');
+  render();
+}
+function setTime(t) {
+  timePeriod=t;
+  ['AM','MD','PM'].forEach(p => document.getElementById(`tbtn-${p}`).classList.toggle('active',p===t));
+  render();
+}
+function setJourney(f) {
+  journeyField=f;
+  document.querySelectorAll('.option-radio').forEach(r => r.classList.remove('checked'));
+  document.getElementById(`jr-${f}`).classList.add('checked');
+  render();
+}
+function toggleAnimate() {
+  animating=!animating;
+  const btn=document.getElementById('anim-btn');
+  if (animating) {
+    btn.innerHTML='<svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="2" y="1" width="2.5" height="8"/><rect x="5.5" y="1" width="2.5" height="8"/></svg> Stop animation';
+    btn.classList.add('playing');
+    animTimer=setInterval(()=>{ const s=ANIM_SEQ[animIdx%ANIM_SEQ.length]; setDayType(s.dayType); setTime(s.timePeriod); animIdx++; },900);
+  } else {
+    btn.innerHTML='<svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="2,1 9,5 2,9"/></svg> Animate all periods';
+    btn.classList.remove('playing');
+    clearInterval(animTimer);
+  }
+}
+function toggleBorough(b) {
+  activeBorough=b;
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  document.getElementById(`bor-${b}`).classList.add('active');
+  if (b==='all') {
+    filteredData=allData;
+    mapInstance.flyTo({center:[-73.97,40.70],zoom:11,duration:600});
+  } else {
+    const bb=BOROUGH_BOUNDS[b];
+    filteredData=allData.filter(s=>{ const [lon,lat]=s.path[0]||[0,0]; return lon>=bb[0]&&lat>=bb[1]&&lon<=bb[2]&&lat<=bb[3]; });
+    mapInstance.fitBounds(
+  [
+    [bb[0], bb[1]], // southwest
+    [bb[2], bb[3]]  // northeast
+  ],
+  {
+    padding: { top: 60, bottom: 60, left: 320, right: 60 }, // key tweak
+    duration: 600
+  }
+);
+  }
+  render();
+}
+function exportVisible() {
+  const field=mode==='volume'?`pred${dayType}${timePeriod}`:mode==='journey'?journeyField:'avg_pred_all';
+  const rows=[['id','lon','lat','predwkdyAM','predwkdyMD','predwkdyPM','predwkndAM','predwkndMD','predwkndPM','avg_pred_wkdy','avg_pred_wknd','avg_pred_all',field].join(',')];
+  filteredData.forEach(s=>{ const [lon,lat]=s.path[0]||[0,0]; rows.push([s.id,lon.toFixed(6),lat.toFixed(6),s.predwkdyAM,s.predwkdyMD,s.predwkdyPM,s.predwkndAM,s.predwkndMD,s.predwkndPM,s.avg_pred_wkdy,s.avg_pred_wknd,s.avg_pred_all,s[field]].join(',')); });
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([rows.join('\n')],{type:'text/csv'}));
+  a.download=`nyc_ped_${activeBorough}_${field}.csv`;
+  a.click();
+}
+
+async function boot() {
+  try {
+    document.getElementById('load-msg').textContent=`Loading ${DATA_FILE}...`;
+    const res=await fetch(DATA_FILE);
+    if (!res.ok) throw new Error(`HTTP ${res.status} — is the file next to index.html?`);
+    document.getElementById('load-msg').textContent='Parsing data...';
+    const raw=await res.json();
+    document.getElementById('load-msg').textContent=`Processing ${raw.length.toLocaleString()} segments...`;
+    raw.forEach(s=>{
+      if (s.avg_pred_wkdy===undefined) s.avg_pred_wkdy=+((((s.predwkdyAM||0)+(s.predwkdyMD||0)+(s.predwkdyPM||0))/3).toFixed(1));
+      if (s.avg_pred_wknd===undefined) s.avg_pred_wknd=+((((s.predwkndAM||0)+(s.predwkndMD||0)+(s.predwkndPM||0))/3).toFixed(1));
+      if (s.avg_pred_all===undefined)  s.avg_pred_all=+(((s.avg_pred_wkdy+s.avg_pred_wknd)/2).toFixed(1));
+    });
+    allData=raw; filteredData=raw;
+    initMap();
+  } catch(err) {
+    document.getElementById('load-msg').textContent=`Error: ${err.message}`;
+    console.error(err);
+  }
+}
+
+function initMap() {
+  // MapLibre GL — free, no token required
+  // Using Stadia Maps' Alidade Smooth Dark style (free, no token needed for localhost/dev)
+  mapInstance = new maplibregl.Map({
+    container: 'map',
+    style: {
+      version: 8,
+      sources: {
+        'carto-dark': {
+          type: 'raster',
+          tiles: [
+            'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+            'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+            'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+          ],
+          tileSize: 256,
+          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+          maxzoom: 19,
+        }
+      },
+      layers: [{
+        id: 'carto-dark-layer',
+        type: 'raster',
+        source: 'carto-dark',
+        minzoom: 0,
+        maxzoom: 22,
+      }]
+    },
+    center: [-73.97, 40.70],
+    zoom: 11,
+    pitch: 0,
+    bearing: 0,
+  });
+
+  mapInstance.on('load', () => {
+    // deck.gl MapboxOverlay works with MapLibre too
+    overlay = new deck.MapboxOverlay({ interleaved: false, layers: [] });
+    mapInstance.addControl(overlay);
+    document.getElementById('loading').style.display='none';
+    showTooltip(null);
+    render();
+  });
+}
+
+boot();
+</script>
+</body>
+</html>
